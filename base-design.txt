@@ -1,0 +1,241 @@
+
+                      ASST2 BASE VM DESIGN NOTES
+                      --------------------------
+
+This file describes the architecture of the VM system that you have
+to complete.
+
+
+VM system: data structures
+--------------------------
+
+   A VM system data structure setup typically can be divided into
+three areas: first, the per-process virtual page management
+structures; second, the global physical page managment structures; and
+finally, any additional data structures required for hardware MMU
+operation. We focus on the former two; the structures required for 
+MMU operation are at the bottom of kern/arch/mips/vm/coremap.c, but 
+you will not need to alter them for this assignment.
+
+Virtual page management
+-----------------------
+
+   Each virtual address space consists of an array of VM object
+structures. A VM object (struct vm_object) defines a region of an 
+address space; it contains a base virtual address and an array of pages. 
+These pages are managed as lpage (logical page) structures, each of 
+which contains a physical address, a disk address, and some flags.
+
+   Since there will be a lot of lpage structures, it's important to
+keep them small, so we keep the flags in the low bits of the physical
+address field. There are two flags: one that marks whether the logical
+page is dirty, that is, the copy in memory needs to be written out to
+swap before being discarded, and one that marks whether the logical
+page is locked for modification. The lpage is resident if the physical
+address (with the flags masked off) is not INVALID_PADDR. Under normal
+circumstances, every lpage will have a valid swap address. (The lpage
+structures are the page table entries we discussed in class.)
+
+   The address space and vm_object structures are not yet locked or
+synchronized; it is assumed that they are not shared. (In assignment 4, 
+we will have to change that assumption.) The lpage structures are 
+lockable in order to make it possible to evict another process's pages.
+
+   The pages stored in a vm_object's page array may be NULL rather
+than actual lpage structures. These are unused/untouched pages that
+are zerofilled and mapped when referenced but not allocated (either
+in physical memory or swap) before then. Space for zerofilled pages is
+reserved in the swap file, so we can't run out of memory unexpectedly.
+(In fact, because of the way things are set up, all pages are
+initially marked zerofilled and thus reserved in the swap file prior
+to actual swap allocation.)
+
+   To handle the red zone that we'd like to have beneath the
+user-level stack, we put a lower_redzone field in the vm_object
+structure. (The red zone is unused section of memory that keeps the 
+stack away from other allocated objects.) This is used when inserting 
+vm_objects to make sure nothing else can be mapped in the redzone. 
+It isn't used or needed during fault handling. To set this up, we 
+added an argument to as_define_region to allow specifying the redzone 
+size.  
+
+   The address space functions appear in vm/addrspace.c; vm_object,
+lpage, and swap I/O functions appear in vm/vmobj.c, vm/lpage.c, and
+vm/swap.c respectively.  You will need to fill in the missing 
+functionality in vm/lpage.c to implement lpage_fault and lpage_evict.
+
+
+Physical page management
+------------------------
+
+   The physical address space is managed using a coremap, an array of
+per-physical page records. Since there are a lot of these records, and
+furthermore since they're absolute overhead (because they're per-page,
+adding more RAM doesn't help), it's very important to keep them small.
+
+   The coremap entry contains a pointer to the lpage presently mapped
+in the corresponding physical page, and several bit fields:
+	cm_tlbix	MIPS TLB slot mapping this page (0-63 or -1 for none.)
+	cm_cpunum   The CPU number of the tlb entry.
+	cm_kernel	True if this page belongs to the kernel.
+	cm_notlast	True if next page is part of the same allocation.
+	cm_allocated	True if this page is in use (user or kernel).
+	cm_pinned	True if page is busy (generally, in transit).
+
+   The total size of the bitfields is less than one 32-bit word, so
+the total size of the coremap entry is 8 bytes.
+
+   The cm_tlbix field is used for rapid TLB invalidation. (Note that
+the code presently assumes pages aren't shared or doubly-mapped, so
+each page only appears in the TLB once.)
+
+   The cm_kernel flag is used when choosing pages for replacement:
+kernel pages cannot be swapped out. (Because the kernel cannot be
+swapped out, we also don't bother to list the space taken by the
+actual kernel image in the coremap.)
+
+   The cm_notlast flag marks pages in a multipage contiguous
+allocation. Since these are done only by the kernel, cm_notlast 
+should not be set unless cm_kernel is also set.
+
+   cm_allocated should be set if the page is in use, whether by the
+kernel or by a user process.
+
+   cm_pinned locks pages that are in transit. Most of the time one
+does not sleep waiting for this lock bit, but chooses pages that are
+presently available. The global_paging_lock (below) is used to limit
+the number of pages marked pinned at any one time.
+
+   The coremap does not know (and tries not to care) what processes or
+address spaces its physical pages belong to. This avoids having to
+record both the address space and the virtual address in the coremap
+entry. It only works because we have the cm_tlbix field: when we want
+to evict a page, we can flush it from the TLB without knowing its
+virtual address. (If one were to add page sharing, one would have to
+scan the entire TLB when evicting a shared page.)
+
+   The coremap and MMU handling code lives in
+arch/mips/vm/coremap.c. A bit of other machine-dependent code lives
+in arch/mips/vm/vm.c.
+
+
+VM system: locking
+------------------
+
+   The other essential design issue in a VM system is the locking
+structure.
+
+   In the ASST3 VM, purely per-process objects (address spaces and
+vm_objects) are not locked, because we are assuming one thread per
+process. However, each lpage structure, as well as each coremap
+entry/physical page, can be locked.
+
+   There is an additional global lock for paging. This does not
+actually protect any data (for various reasons it's necessary to
+assume a number of things can be manipulated without holding it.)  It
+exists because, under present circumstances, only one swap operation
+(pagein or pageout) can be in progress at any one time anyway. If
+processes are going to be blocked waiting to do swap I/O, it's better
+if they block *before* they make replacement decisions, pin pages,
+etc. So any process that's intending to page acquires the global
+paging lock first.
+
+   The global paging lock also has a role in reducing starvation of
+multipage contiguous allocations. See the comments in coremap.c for a
+full discussion.
+
+   The lock ordering is:
+
+	global_paging_lock first;
+	coremap pages second;
+	lpages third.
+
+   The restriction on coremap pages only applies when one is actually
+sleeping on such a page (using coremap_pin) to wait for someone else
+to be done with it.
+
+   It is incorrect to lock an lpage while holding an lpage lock, or to
+wait to pin a coremap page when already holding one pinned. Note that
+while lpage_copy does in fact have two lpages locked at once for a
+while, the way it enters this state guarantees that no deadlock can
+occur. (It locks the second lpage before anyone else can see it, so
+nobody else can possibly have it locked.)
+
+
+Fault handling
+--------------
+
+   The basic fault handling path goes from mips_trap 
+(in arch/mips/locore/trap.c) to v_fault (in arch/mips/vm/vm.c), which 
+calls as_fault (vm/addrspace.c). At that point the vm_object for the 
+fault is looked up; if there isn't one, that's an error.
+
+   The lpage is then fetched from the vm_object. If it's NULL,
+lpage_zerofill is called to map a new zero-filled lpage, which is
+loaded into the vm_object. Otherwise, lpage_fault is called.
+
+   lpage_fault swaps the page in if necessary.  You will have to
+implement this.  You may find it very useful to look at lpage_copy for
+part of what needs to be done in lpage_fault.  Note that the final
+step in handling a page fault is to enter a mapping in the TLB - you 
+should find a suitable function for this in coremap.c.
+
+
+Page eviction
+-------------
+
+   Page eviction originates in the coremap code when a page is
+allocated and there are no free pages, or a multi-page allocation is
+attempted and no suitable range composed entirely of free pages
+exists.
+
+   Pages can be evicted when a kernel allocation happens or when a
+user process requests a physical page for pagein, zerofill, or copy.
+(However, if alloc_kpages is called in an interrupt handler, it fails
+instead of attempting eviction.)
+
+   The coremap code calls do_page_replace to handle the eviction; this
+function (aside from the assertions), simply calls page_replace to
+select a victim, and then calls do_evict to actually perform the
+eviction.  You will write two versions of page_replace, one
+implementing random victim selection and one implementing sequential
+eviction. You should implement the sequential eviction first, as it will
+let you do testing. Once you believe your VM is working, implement the
+random eviction function and then switch to ASST3-RAND.  
+
+
+fork
+----
+
+   The VM manifestation of fork is as_copy. Without copy-on-write,
+it's very simple - just duplicate the entire structure from the top
+down. Right? Well, yes. It turns out that the locking is rather
+complicated when it gets down to copying at the lpage level. See the
+comments on lpage_copy in lpage.c.
+
+
+loadelf
+-------
+
+   There is only one minor modification to the loadelf code: it
+doesn't explicitly zero out the BSS region, except for any possible
+partial page at the beginning. It instead relies on the zerofill
+property of the VM: page ranges defined but not touched will be
+zerofilled when used. This means they may actually never be
+materialized, depending on what the program actually does.
+
+   Otherwise, the program loading logic uses the functions defined in
+addrspace.c for loadelf to call. as_define_region allocates a
+vm_object for a particular virtual range, checking for (and rejecting)
+overlapping regions. as_prepare_load and as_complete_load do nothing.
+as_define_stack calls as_define_region to define a stack, which is
+just an ordinary region (vm_object) of a fixed maximum size, presently
+2MB. We rely on the zerofill optimization here: if we actually
+materialized 2 megabytes of stack space for every process, fork would
+become exceedingly slow and performance in general would tank.  As
+before, the actual loading happens by a VOP_READ from the executable
+file into the virtual address space (see load_segment in loadelf.c),
+however, the resulting page fault on access to the address space must
+now be resolved by the vm_fault -> as_fault -> lpage_fault sequence.
+Since lpage_fault is not yet implemented, you will find that you can
+not load and run any user programs initially.
