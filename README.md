@@ -12,7 +12,6 @@ CSCC69
 <li> Project Tasks</a></li>
 <li> Paging Details</a></li>
 <li> Paging in OS/161</a></li>
-<li> Solutions</a></li>
 
 </ol>
 <h2><a name="intro">Introduction</a></h2>
@@ -261,8 +260,3 @@ To test synchronization, you need to be running multiple processes that all use 
 the <tt>execv</tt> system call, which is not implemented.  You should be able to create similar tests that just fork several child processes, each of which executes the matmult or sort function separately, however. </p>
 
 <p>Good luck!</p>
-   
-<h2><a name="sol">Solutions</a></h2>
-<a href="http://www.utsc.utoronto.ca/~10gillka/projects/c69/p2/">Project 2</a>
-<hr>
-  
