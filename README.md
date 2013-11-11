@@ -263,6 +263,6 @@ the <tt>execv</tt> system call, which is not implemented.  You should be able to
 <p>Good luck!</p>
    
 <h2><a name="sol">Solutions</a></h2>
-<a href="p2">Project 2</a>
+<a href="http://www.utsc.utoronto.ca/~10gillka/projects/c69/p2/">Project 2</a>
 <hr>
   
