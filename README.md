@@ -7,12 +7,12 @@ CSCC69
 <h2>Outline</h2>
 
 <ol>
-<li> <a href="c69_p2.shtml#intro">Introduction</a> </li>
-<li> <a href="c69_p2.shtml#setup">Setup</a></li>
-<li> <a href="c69_p2.shtml#tasks">Project Tasks</a></li>
-<li> <a href="c69_p2.shtml#pg">Paging Details</a></li>
-<li> <a href="c69_p2.shtml#reqs">Paging in OS/161</a></li>
-<li> <a href="c69_p2.shtml#sol">Solutions</a></li>
+<li> Introduction</a> </li>
+<li> Setup</a></li>
+<li> Project Tasks</a></li>
+<li> Paging Details</a></li>
+<li> Paging in OS/161</a></li>
+<li> Solutions</a></li>
 
 </ol>
 <h2><a name="intro">Introduction</a></h2>
