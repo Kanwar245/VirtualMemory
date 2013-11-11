@@ -1,0 +1,363 @@
+/*
+* This concurrently runs huge, sort, matmult and palin simultaneously by forking repeatly
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <err.h>
+#include <unistd.h>
+
+//Constants from huge
+#define PageSize	4096
+#define NumPages	512
+
+//Constants from sort
+#define SIZE  (144*1024)
+
+//Constants from matmult
+#define Dim 	72	/* sum total of the arrays doesn't fit in 
+			 * physical memory 
+			 */
+#define RIGHT  8772192		/* correct answer */
+
+int huge_main(int);
+int sort_main(int);
+int palin_main(int);
+int matmult_main(int);
+
+void sort(int *, int);
+void check(void);
+void initarray(void);
+
+int main() {
+
+int (*func[4])(int) = {huge_main, sort_main, palin_main, matmult_main};
+for (int i = 0; i < 4; i++){
+	int pid= fork();
+	if (pid < 0){
+		printf("Fork failed");
+		exit(1);
+	}
+	if ( pid == 0 ){
+		printf("Child %d\n", i);
+		(func[i])(0);
+		exit(0);
+	}
+} 
+printf("Child done");
+
+	/*
+	//huge
+	int fork_huge = fork();
+	if (fork_huge == 0) {
+		return huge_main();
+	}
+
+	else {
+
+		//sort
+		int fork_sort = fork();
+		if (fork_sort == 0) {
+			return sort_main();
+		}
+
+		else {
+
+			//matmult
+			int fork_matmult = fork();
+			if (fork_matmult == 0) {
+				return matmult_main();
+			}
+
+			///palin
+			else {
+				return palin_main();
+			}
+
+		}
+
+	}
+  //*/
+}
+
+int huge_main(int foo) {
+	(void) foo;
+
+	int sparse[NumPages][PageSize];
+	int i,j;
+
+	printf("Entering the huge program - I will stress test your VM\n");
+
+	/* move number in so that sparse[i][0]=i */
+	for (i=0; i<NumPages; i++) {
+		sparse[i][0]=i;
+	}
+	
+	printf("stage [1] done\n");
+	
+	/* increment each location 5 times */
+	for (j=0; j<5; j++) {
+		for (i=0; i<NumPages; i++) {
+			sparse[i][0]++;
+		}
+		printf("stage [2.%d] done\n", j);
+	}
+	
+	printf("stage [2] done\n");
+	
+	/* check if the numbers are sane */
+	for (i=NumPages-1; i>=0; i--) {
+		if (sparse[i][0]!=i+5) {
+			printf("BAD NEWS!!! - your VM mechanism has a bug!\n");
+			exit(1);
+		}
+	}
+	
+	printf("You passed!\n");
+	
+	return 0;
+}
+
+
+// Quicksort implementation from /testbin/sort-->
+
+/*
+ * Quicksort.
+ *
+ * This used to be a bubble sort, which was ok but slow in nachos with
+ * 4k of memory and SIZE of 1024. However, with SIZE of 147,456 bubble
+ * sort is completely unacceptable.
+ *
+ * Also, quicksort has somewhat more interesting memory usage patterns.
+ */
+
+void
+sort(int *arr, int size)
+{
+	int tmp[SIZE];
+	int pivot, i, j, k;
+
+	if (size<2) {
+		return;
+	}
+
+	pivot = size/2;
+	sort(arr, pivot);
+	sort(&arr[pivot], size-pivot);
+
+	i = 0;
+	j = pivot;
+	k = 0;
+	while (i<pivot && j<size) {
+		if (arr[i] < arr[j]) {
+			tmp[k++] = arr[i++];
+		}
+		else {
+			tmp[k++] = arr[j++];
+		}
+	}
+	while (i<pivot) {
+		tmp[k++] = arr[i++];
+	}
+	while (j<size) {
+		tmp[k++] = arr[j++];
+	}
+
+	memcpy(arr, tmp, size*sizeof(int));
+}
+
+////////////////////////////////////////////////////////////
+
+int A[SIZE];
+
+void
+initarray(void)
+{
+	int i;
+
+	/*
+	 * Initialize the array, with pseudo-random but deterministic contents.
+	 */
+	srandom(533);
+
+	for (i = 0; i < SIZE; i++) {		
+		A[i] = random();
+	}
+}
+
+void
+check(void)
+{
+	int i;
+
+	for (i=0; i<SIZE-1; i++) {
+		if (A[i] > A[i+1]) {
+			errx(1, "Failed: A[%d] is %d, A[%d] is %d", 
+			     i, A[i], i+1, A[i+1]);
+		}
+	}
+	warnx("Passed.");
+}
+
+// <-- Quicksort implementation from /testbin/sort
+
+int sort_main(int foo) {
+	(void) foo;
+	initarray();
+	sort(A, SIZE);
+	check();
+	return 0;
+}
+
+int matmult_main(int foo) {
+	(void) foo;
+	int A[Dim][Dim];
+	int B[Dim][Dim];
+	int C[Dim][Dim];
+	int T[Dim][Dim][Dim];
+
+	int i, j, k, r;
+
+    for (i = 0; i < Dim; i++)		/* first initialize the matrices */
+	for (j = 0; j < Dim; j++) {
+	     A[i][j] = i;
+	     B[i][j] = j;
+	     C[i][j] = 0;
+	}
+
+    for (i = 0; i < Dim; i++)		/* then multiply them together */
+	for (j = 0; j < Dim; j++)
+            for (k = 0; k < Dim; k++)
+		T[i][j][k] = A[i][k] * B[k][j];
+
+    for (i = 0; i < Dim; i++)
+	for (j = 0; j < Dim; j++)
+            for (k = 0; k < Dim; k++)
+		C[i][j] += T[i][j][k];
+
+    r = 0;
+    for (i = 0; i < Dim; i++)
+	    r += C[i][i];
+
+    printf("matmult finished.\n");
+    printf("answer is: %d (should be %d)\n", r, RIGHT);
+    if (r != RIGHT) {
+	    printf("FAILED\n");
+	    return 1;
+    }
+    printf("Passed.\n");
+    return 0;
+}
+
+int palin_main(int foo) {
+	(void) foo;
+	char palindrome[8000] = 
+		"amanaplanacaretabanamyriadasumalacaliarahoopapintacatalpaagasanoil"
+		"abirdayellavatacawapaxawagataxanayaramacapayamagayatsarawalla"
+		"caralugerawardabinawomanavassalawolfatunaanitapallafretawattabaya"
+		"daubatanacabadatumagallahatafagazapasayajawalayawetagallopatuga"
+		"trotatrapatramatorracaperatopatonkatollaballafairasaxaminimatenora"
+		"bassapasseracapitalarutanamenatedacabalatangasunanassamawasaga"
+		"jamadamasubasaltanaxonasailanadawadiaradianaroomaroodaripatada"
+		"pariaharevelareelareedapoolaplugapinapeekaparabolaadogapatacudanua"
+		"fanapalarumanodanetaalaganeelabatikamugamotanapamaximamooda"
+		"leekagrubagobageladrabacitadelatotalacedaratapagagaratamanorabara"
+		"galacolaapapayawatabarajagabanagapaganabagajarabatawayapapaa"
+		"localagarabaronamataragagapataradecalatotaledaticabardalegaboga"
+		"burgakeeladoomamixamapanatomagumakitabaleenagalaatenadonamurala"
+		"panafaunaducatapagodaalobarapakeepanipagulpaloopadeeraleeralevera"
+		"hairapadatapiradooramooranaidaraidawadanaliasanoxanatlasabusamadam"
+		"ajagasawamassananusagnatalabacadetanemanaturalatipacaressapassa"
+		"baronetaminimaxasariafallaballotaknotapotarepacarrotamartapartatorta"
+		"gutapollagatewayalawajayasapazagafatahallagamutadabacanatabuaday"
+		"abattawaterfallapatinaanutaflowalassavanamowanibadrawaregularacalla"
+		"warastayagamayapacamarayanaxatagawaxapawacatavalleyadribaliona"
+		"sagaaplatacatnipapooharailacalamusadairymanabateracanalpanama"
+		"amanaplanacaretabanamyriadasumalacaliarahoopapintacatalpaagasanoil"
+		"abirdayellavatacawapaxawagataxanayaramacapayamagayatsarawalla"
+		"caralugerawardabinawomanavassalawolfatunaanitapallafretawattabaya"
+		"daubatanacabadatumagallahatafagazapasayajawalayawetagallopatuga"
+		"trotatrapatramatorracaperatopatonkatollaballafairasaxaminimatenora"
+		"bassapasseracapitalarutanamenatedacabalatangasunanassamawasaga"
+		"jamadamasubasaltanaxonasailanadawadiaradianaroomaroodaripatada"
+		"pariaharevelareelareedapoolaplugapinapeekaparabolaadogapatacudanua"
+		"fanapalarumanodanetaalaganeelabatikamugamotanapamaximamooda"
+		"leekagrubagobageladrabacitadelatotalacedaratapagagaratamanorabara"
+		"galacolaapapayawatabarajagabanagapaganabagajarabatawayapapaa"
+		"localagarabaronamataragagapataradecalatotaledaticabardalegaboga"
+		"burgakeeladoomamixamapanatomagumakitabaleenagalaatenadonamurala"
+		"panafaunaducatapagodaalobarapakeepanipagulpaloopadeeraleeralevera"
+		"hairapadatapiradooramooranaidaraidawadanaliasanoxanatlasabusamadam"
+		"ajagasawamassananusagnatalabacadetanemanaturalatipacaressapassa"
+		"baronetaminimaxasariafallaballotaknotapotarepacarrotamartapartatorta"
+		"gutapollagatewayalawajayasapazagafatahallagamutadabacanatabuaday"
+		"abattawaterfallapatinaanutaflowalassavanamowanibadrawaregularacalla"
+		"warastayagamayapacamarayanaxatagawaxapawacatavalleyadribaliona"
+		"sagaaplatacatnipapooharailacalamusadairymanabateracanalpanama"
+		"amanaplanacaretabanamyriadasumalacaliarahoopapintacatalpaagasanoil"
+		"abirdayellavatacawapaxawagataxanayaramacapayamagayatsarawalla"
+		"caralugerawardabinawomanavassalawolfatunaanitapallafretawattabaya"
+		"daubatanacabadatumagallahatafagazapasayajawalayawetagallopatuga"
+		"trotatrapatramatorracaperatopatonkatollaballafairasaxaminimatenora"
+		"bassapasseracapitalarutanamenatedacabalatangasunanassamawasaga"
+		"jamadamasubasaltanaxonasailanadawadiaradianaroomaroodaripatada"
+		"pariaharevelareelareedapoolaplugapinapeekaparabolaadogapatacudanua"
+		"fanapalarumanodanetaalaganeelabatikamugamotanapamaximamooda"
+		"leekagrubagobageladrabacitadelatotalacedaratapagagaratamanorabara"
+		"galacolaapapayawatabarajagabanagapaganabagajarabatawayapapaa"
+		"localagarabaronamataragagapataradecalatotaledaticabardalegaboga"
+		"burgakeeladoomamixamapanatomagumakitabaleenagalaatenadonamurala"
+		"panafaunaducatapagodaalobarapakeepanipagulpaloopadeeraleeralevera"
+		"hairapadatapiradooramooranaidaraidawadanaliasanoxanatlasabusamadam"
+		"ajagasawamassananusagnatalabacadetanemanaturalatipacaressapassa"
+		"baronetaminimaxasariafallaballotaknotapotarepacarrotamartapartatorta"
+		"gutapollagatewayalawajayasapazagafatahallagamutadabacanatabuaday"
+		"abattawaterfallapatinaanutaflowalassavanamowanibadrawaregularacalla"
+		"warastayagamayapacamarayanaxatagawaxapawacatavalleyadribaliona"
+		"sagaaplatacatnipapooharailacalamusadairymanabateracanalpanama"
+		"amanaplanacaretabanamyriadasumalacaliarahoopapintacatalpaagasanoil"
+		"abirdayellavatacawapaxawagataxanayaramacapayamagayatsarawalla"
+		"caralugerawardabinawomanavassalawolfatunaanitapallafretawattabaya"
+		"daubatanacabadatumagallahatafagazapasayajawalayawetagallopatuga"
+		"trotatrapatramatorracaperatopatonkatollaballafairasaxaminimatenora"
+		"bassapasseracapitalarutanamenatedacabalatangasunanassamawasaga"
+		"jamadamasubasaltanaxonasailanadawadiaradianaroomaroodaripatada"
+		"pariaharevelareelareedapoolaplugapinapeekaparabolaadogapatacudanua"
+		"fanapalarumanodanetaalaganeelabatikamugamotanapamaximamooda"
+		"leekagrubagobageladrabacitadelatotalacedaratapagagaratamanorabara"
+		"galacolaapapayawatabarajagabanagapaganabagajarabatawayapapaa"
+		"localagarabaronamataragagapataradecalatotaledaticabardalegaboga"
+		"burgakeeladoomamixamapanatomagumakitabaleenagalaatenadonamurala"
+		"panafaunaducatapagodaalobarapakeepanipagulpaloopadeeraleeralevera"
+		"hairapadatapiradooramooranaidaraidawadanaliasanoxanatlasabusamadam"
+		"ajagasawamassananusagnatalabacadetanemanaturalatipacaressapassa"
+		"baronetaminimaxasariafallaballotaknotapotarepacarrotamartapartatorta"
+		"gutapollagatewayalawajayasapazagafatahallagamutadabacanatabuaday"
+		"abattawaterfallapatinaanutaflowalassavanamowanibadrawaregularacalla"
+		"warastayagamayapacamarayanaxatagawaxapawacatavalleyadribaliona"
+		"sagaaplatacatnipapooharailacalamusadairymanabateracanalpanama";
+
+	char *start, *end;
+	
+	printf("Welcome to the palindrome tester!\n");
+	printf("I will take a large palindrome and test it.\n");
+	printf("Here it is:\n");
+	printf("%s\n", palindrome);
+
+	printf("Testing...");
+	/* skip to end */
+	end = palindrome+strlen(palindrome);
+	end--;
+
+	for (start = palindrome; start <= end; start++, end--) {
+		putchar('.');
+		if (*start != *end) {
+			printf("NOT a palindrome\n");
+			return 0;
+		}
+	}
+	
+	printf("IS a palindrome\n");
+	return 0;
+}

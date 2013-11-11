@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svn/cscc69s13/Group1/a2/!svn/ver/11/src/kern/arch/sys161/include
+END
+bus.h
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/svn/cscc69s13/Group1/a2/!svn/ver/11/src/kern/arch/sys161/include/bus.h
+END
+maxcpus.h
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svn/cscc69s13/Group1/a2/!svn/ver/11/src/kern/arch/sys161/include/maxcpus.h
+END

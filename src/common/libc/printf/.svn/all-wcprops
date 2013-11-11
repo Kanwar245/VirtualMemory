@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/svn/cscc69s13/Group1/a2/!svn/ver/11/src/common/libc/printf
+END
+__printf.c
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/cscc69s13/Group1/a2/!svn/ver/11/src/common/libc/printf/__printf.c
+END
+snprintf.c
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svn/cscc69s13/Group1/a2/!svn/ver/11/src/common/libc/printf/snprintf.c
+END
