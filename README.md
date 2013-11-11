@@ -73,7 +73,7 @@ the standard OS/161 lock interfaces.
       functions. <i>These are invoked as "cm" and "cm2" from the os161 menu prompt</i><p></p></li>
 </ul>
 <p>
-To help you get started, <a href="base-design.txt">base-design.txt</a> describes 
+To help you get started, base-design.txt describes 
 the overall design of the virtual memory system that you will be completing. 
 <b>You should read this file before starting to read the code.</b></p>
 
