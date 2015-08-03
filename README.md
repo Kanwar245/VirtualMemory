@@ -1,4 +1,5 @@
-c69_project_2
+CSCC69 Project 2
+Summer 2013
 =============
 
 CSCC69 
